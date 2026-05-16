@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Neuralis — The 3D Cognition Engine</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=block" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0e0e0e; --surface:#131313; --s1:#1c1b1b; --s2:#20201f; --s3:#2a2a2a;
+    --text:#e5e2e1; --muted:#c4c7c7; --dim:#8e9192;
+    --line:rgba(229,226,225,0.16); --line-strong:rgba(229,226,225,0.45);
+    --accent:#4a5568;
+    --sans:'Geist','Inter','-apple-system','Segoe UI','Roboto',sans-serif;
+    --mono:'Geist Mono','JetBrains Mono','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;color:var(--text);font-family:var(--sans);overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+
+  /* Fixed 1920x1080 stage scaled to viewport */
+  .stage{position:relative;width:1920px;height:1080px;background:var(--surface);transform-origin:center center;overflow:hidden}
+
+  .slide{
+    position:absolute;inset:0;display:grid;padding:48px 64px 56px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transform:translateY(22px);
+    transition:opacity 360ms ease, transform 520ms cubic-bezier(.2,.7,.2,1), visibility 0s linear 380ms;
+  }
+  .slide.is-active{
+    opacity:1;visibility:visible;pointer-events:auto;
+    transform:translateY(0);z-index:2;
+    transition:opacity 360ms ease, transform 520ms cubic-bezier(.2,.7,.2,1), visibility 0s linear 0s;
+  }
+  /* staggered content entrance */
+  @keyframes slide-enter{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .slide.is-active > *{animation:slide-enter 560ms cubic-bezier(.2,.7,.2,1) both}
+  .slide.is-active > *:nth-child(1){animation-delay:60ms}
+  .slide.is-active > *:nth-child(2){animation-delay:140ms}
+  .slide.is-active > *:nth-child(3){animation-delay:220ms}
+  .slide.is-active > *:nth-child(4){animation-delay:300ms}
+  .slide.is-active > *:nth-child(5){animation-delay:380ms}
+  .slide.is-active > *:nth-child(6){animation-delay:460ms}
+  .slide.is-active > *:nth-child(7){animation-delay:540ms}
+  @media (prefers-reduced-motion: reduce){
+    .slide,.slide.is-active{transition:opacity 120ms ease;transform:none}
+    .slide.is-active > *{animation:none}
+  }
+
+  /* ===== Top nav (shared) ===== */
+  .navbar{
+    grid-area:nav;
+    display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid var(--line);padding-bottom:16px;
+  }
+  .brand{font-family:var(--mono);font-size:14px;letter-spacing:0.18em;color:var(--text)}
+  .navlinks{display:flex;gap:40px}
+  .navlinks a{font-family:var(--mono);font-size:13px;letter-spacing:0.18em;color:var(--dim);text-decoration:none;padding:6px 0;border-bottom:1px solid transparent}
+  .navlinks a.active{color:var(--text);border-bottom-color:var(--text)}
+  .nav-cta{font-family:var(--mono);font-size:12px;letter-spacing:0.2em;color:var(--text);border:1px solid var(--line-strong);padding:10px 18px;display:inline-flex;gap:10px;align-items:center}
+  .nav-cta::after{content:"→";color:var(--text)}
+
+  /* ===== Bottom rail (shared) ===== */
+  .rail{
+    grid-area:rail;
+    display:flex;gap:48px;border-top:1px solid var(--line);padding-top:16px;
+  }
+  .rail .col{display:flex;flex-direction:column;gap:6px}
+  .rail .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+  .rail .v{font-family:var(--mono);font-size:13px;letter-spacing:0.16em;color:var(--text)}
+
+  /* ===== Counter ===== */
+  .counter{position:fixed;right:24px;bottom:18px;font-family:var(--mono);font-size:12px;letter-spacing:0.2em;color:var(--dim);z-index:60;opacity:0;transition:opacity 220ms ease;pointer-events:none;background:rgba(8,8,8,0.7);padding:6px 10px;border:1px solid var(--line)}
+  body.ui-on .counter{opacity:1}
+
+  /* ===== Chip ===== */
+  .chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--text);border:1px solid var(--line-strong);padding:8px 12px;text-transform:uppercase}
+  .chip.dim{color:var(--dim);border-color:var(--line)}
+  .chip.solid{background:var(--text);color:#1a1a1a;border-color:var(--text)}
+
+  /* ===== Headlines ===== */
+  .display{font-family:var(--sans);font-weight:600;letter-spacing:-0.01em;line-height:1.02;color:var(--text)}
+  .h-xl{font-size:120px}
+  .h-lg{font-size:88px}
+  .h-md{font-size:56px}
+  .h-sm{font-size:40px;font-weight:500;line-height:1.1}
+
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:0.28em;color:var(--text);text-transform:uppercase}
+  .body{font-family:var(--sans);font-size:18px;line-height:1.55;color:var(--muted);max-width:62ch}
+  .lead{font-family:var(--sans);font-size:22px;line-height:1.5;color:var(--text);max-width:60ch;font-weight:400}
+
+  /* ===== Buttons ===== */
+  .btn-row{display:flex;gap:16px}
+  .btn{font-family:var(--mono);font-size:12px;letter-spacing:0.2em;text-transform:uppercase;padding:14px 22px;border:1px solid var(--text);color:var(--text);display:inline-flex;gap:14px;align-items:center;background:transparent}
+  .btn.solid{background:var(--text);color:#1a1a1a}
+  .btn::after{content:"→"}
+
+  /* ===== Slide 1 — Title + Outline ===== */
+  .s1{grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:"nav nav" "left right" "rail rail";gap:32px 56px}
+  .s1 .left{grid-area:left;display:flex;flex-direction:column;gap:36px;padding-top:24px}
+  .s1 .right{
+    grid-area:right;position:relative;overflow:hidden;border:1px solid var(--line);
+    background:
+      radial-gradient(ellipse 110% 80% at 60% 30%, rgba(74,85,104,0.18), transparent 60%),
+      linear-gradient(180deg, #0d0d0d 0%, #151515 100%);
+  }
+  .s1 .right svg.bg{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .s1 .coords{position:absolute;top:24px;right:24px;border:1px solid var(--line-strong);padding:14px 18px;font-family:var(--mono);font-size:12px;letter-spacing:0.16em;color:var(--text);background:rgba(14,14,14,0.78);min-width:280px;z-index:2}
+  .s1 .coords .row{display:flex;justify-content:space-between;gap:24px;padding:3px 0}
+  .s1 .coords .row span:first-child{color:var(--dim);letter-spacing:0.22em;font-size:11px}
+  .s1 .corner-mark{position:absolute;font-family:var(--mono);font-size:10px;letter-spacing:0.22em;color:var(--dim);z-index:2}
+  .s1 .corner-mark.tl{top:18px;left:18px}
+  .s1 .corner-mark.bl{bottom:18px;left:18px}
+  .s1 .corner-mark.br{bottom:18px;right:18px}
+  .s1 .outline-list{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-top:8px}
+  .s1 .outline-list li{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line);list-style:none}
+  .s1 .outline-list .idx{font-family:var(--mono);font-size:12px;letter-spacing:0.22em;color:var(--dim)}
+  .s1 .outline-list .lbl{font-family:var(--sans);font-size:18px;color:var(--text);font-weight:500}
+  .s1 .outline-list .dur{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+
+  /* ===== Slide 2 — Problem ===== */
+  .s2{grid-template-columns:7fr 5fr;grid-template-rows:auto auto 1fr auto;grid-template-areas:"nav nav" "head head" "stats img" "rail rail";gap:28px 48px}
+  .s2 .head{grid-area:head;display:flex;flex-direction:column;gap:14px;padding-top:20px}
+  .s2 .stats{grid-area:stats;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:0;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .s2 .stat{padding:36px 32px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:14px;justify-content:space-between}
+  .s2 .stat .n{font-family:var(--mono);font-size:64px;font-weight:500;letter-spacing:-0.02em;color:var(--text);line-height:1}
+  .s2 .stat .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s2 .stat .d{font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--muted)}
+  .s2 .img{grid-area:img;position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(180deg,#0d0d0d,#141414);padding:26px 24px;display:flex;flex-direction:column;gap:16px}
+  .s2 .img .ih{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px}
+  .s2 .img .ih .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s2 .img .ih .u{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--text)}
+  .s2 .img .bars{display:flex;flex-direction:column;gap:14px;flex:1;justify-content:center}
+  .s2 .img .bar{display:grid;grid-template-columns:96px 1fr 56px;gap:14px;align-items:center}
+  .s2 .img .bar .lbl{font-family:var(--mono);font-size:11px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase}
+  .s2 .img .bar .track{height:14px;background:#1a1a1a;border:1px solid var(--line);position:relative;overflow:hidden}
+  .s2 .img .bar .fill{position:absolute;left:0;top:0;bottom:0;background:var(--text)}
+  .s2 .img .bar .hrs{font-family:var(--mono);font-size:12px;letter-spacing:0.14em;color:var(--text);text-align:right}
+  .s2 .img .bar.hi .lbl{color:var(--text)}
+  .s2 .img .bar.hi .fill{background:var(--text)}
+  .s2 .img .bar.hi .hrs{color:var(--text)}
+  .s2 .img .bar.lo .fill{background:#3a3a3a}
+  .s2 .img .quote{position:relative;background:#0a0a0a;border:1px solid var(--line-strong);padding:18px 20px;margin-top:auto}
+  .s2 .img .quote .t{font-family:var(--sans);font-size:15px;line-height:1.55;color:var(--text)}
+  .s2 .img .quote .a{display:block;margin-top:10px;font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+  .s2 .img .quote .marker{position:absolute;left:18px;top:-9px;background:#131313;padding:0 8px;font-family:var(--mono);font-size:10px;letter-spacing:0.22em;color:var(--dim)}
+
+  /* ===== Slide 3 — Solution ===== */
+  .s3{grid-template-columns:7fr 5fr;grid-template-rows:auto auto 1fr auto;grid-template-areas:"nav nav" "head head" "hero cards" "rail rail";gap:28px 48px}
+  .s3 .head{grid-area:head;display:flex;justify-content:space-between;align-items:flex-end;gap:32px;padding-top:20px}
+  .s3 .head .left{display:flex;flex-direction:column;gap:14px}
+  .s3 .hero{grid-area:hero;position:relative;overflow:hidden;border:1px solid var(--line);background:#0a0a0a}
+  .s3 .hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .s3 .hero .corner{position:absolute;left:18px;bottom:18px;font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--muted);background:rgba(14,14,14,0.7);border:1px solid var(--line);padding:8px 12px}
+  .s3 .cards{grid-area:cards;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+  .s3 .card{display:grid;grid-template-columns:72px 1fr;gap:18px;padding:28px 4px;border-bottom:1px solid var(--line);align-items:start}
+  .s3 .card .idx{font-family:var(--mono);font-size:13px;letter-spacing:0.22em;color:var(--text)}
+  .s3 .card .t{font-family:var(--sans);font-size:22px;font-weight:500;color:var(--text);margin-bottom:8px;letter-spacing:-0.005em}
+  .s3 .card .d{font-family:var(--sans);font-size:15px;line-height:1.55;color:var(--muted);max-width:42ch}
+
+  /* ===== Slide 4 — Architecture ===== */
+  .s4{grid-template-columns:5fr 7fr;grid-template-rows:auto auto 1fr auto auto;grid-template-areas:"nav nav" "head head" "stack tech" "metrics metrics" "rail rail";gap:24px 40px}
+  .s4 .head{grid-area:head;display:flex;justify-content:space-between;align-items:flex-end;gap:32px;padding-top:18px}
+  .s4 .head .left{display:flex;flex-direction:column;gap:12px}
+  .s4 .stack{grid-area:stack;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+  .s4 .layer{display:grid;grid-template-columns:56px 1fr auto;gap:14px;padding:18px 2px;border-bottom:1px solid var(--line);align-items:center}
+  .s4 .layer .lv{font-family:var(--mono);font-size:12px;letter-spacing:0.22em;color:var(--text)}
+  .s4 .layer .nm{font-family:var(--sans);font-size:18px;font-weight:500;color:var(--text)}
+  .s4 .layer .sm{font-family:var(--sans);font-size:13px;color:var(--muted);line-height:1.45;margin-top:2px}
+  .s4 .layer .tag{font-family:var(--mono);font-size:10px;letter-spacing:0.22em;color:var(--dim)}
+  .s4 .tech{grid-area:tech;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:0;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .s4 .tcard{padding:28px 28px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px;justify-content:space-between}
+  .s4 .tcard .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s4 .tcard .v{font-family:var(--sans);font-size:30px;font-weight:500;color:var(--text);letter-spacing:-0.01em;line-height:1.05}
+  .s4 .tcard .d{font-family:var(--sans);font-size:14px;color:var(--muted);line-height:1.5;max-width:34ch}
+  .s4 .metrics{grid-area:metrics;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .s4 .metric{padding:18px 22px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+  .s4 .metric .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s4 .metric .v{font-family:var(--mono);font-size:30px;font-weight:500;color:var(--text);letter-spacing:-0.01em}
+
+  /* ===== Slide 5 — Methods ===== */
+  .s5{grid-template-columns:1fr 1fr 1fr;grid-template-rows:auto auto 1fr auto;grid-template-areas:"nav nav nav" "head head head" "a b c" "rail rail rail";gap:28px 40px}
+  .s5 .head{grid-area:head;display:flex;justify-content:space-between;align-items:flex-end;gap:32px;padding-top:18px}
+  .s5 .head .left{display:flex;flex-direction:column;gap:12px}
+  .s5 .col{display:flex;flex-direction:column;gap:16px;border-top:1px solid var(--line);padding-top:20px}
+  .s5 .col-h{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s5 .col-t{font-family:var(--sans);font-size:22px;font-weight:500;color:var(--text);letter-spacing:-0.005em;margin-bottom:6px}
+  .s5 .col p{font-family:var(--sans);font-size:14px;line-height:1.6;color:var(--muted)}
+  .s5 .steps{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-top:4px}
+  .s5 .step{display:grid;grid-template-columns:42px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .s5 .step .i{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+  .s5 .step .l{font-family:var(--sans);font-size:14px;color:var(--text);font-weight:500}
+  .s5 .step .l small{display:block;font-family:var(--sans);font-size:12px;color:var(--muted);font-weight:400;margin-top:2px;line-height:1.45}
+  .s5 .a{grid-area:a}.s5 .b{grid-area:b}.s5 .c{grid-area:c}
+
+  /* ===== Slide 6 — Results ===== */
+  .s6{grid-template-columns:4fr 8fr;grid-template-rows:auto auto 1fr auto;grid-template-areas:"nav nav" "head head" "metrics hero" "rail rail";gap:28px 40px}
+  .s6 .head{grid-area:head;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:20px;text-align:center}
+  .s6 .head .lead{text-align:center;max-width:70ch}
+  .s6 .hero{grid-area:hero;position:relative;overflow:hidden;border:1px solid var(--line);background:#0a0a0a}
+  .s6 .hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:contrast(1.05) brightness(0.96)}
+  .s6 .hero .caption{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:linear-gradient(to top,rgba(14,14,14,0.9),rgba(14,14,14,0));font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--muted)}
+  .s6 .metrics{grid-area:metrics;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+  .s6 .m{display:flex;flex-direction:column;gap:8px;padding:24px 6px;border-bottom:1px solid var(--line)}
+  .s6 .m .k{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim);text-transform:uppercase}
+  .s6 .m .v{font-family:var(--mono);font-size:44px;font-weight:500;color:var(--text);letter-spacing:-0.02em;line-height:1}
+  .s6 .m .d{font-family:var(--sans);font-size:13px;color:var(--muted);line-height:1.45}
+
+  /* ===== Slide 7 — Future + Q&A ===== */
+  .s7{grid-template-columns:7fr 5fr;grid-template-rows:auto auto 1fr auto;grid-template-areas:"nav nav" "head head" "road qa" "rail rail";gap:28px 48px}
+  .s7 .head{grid-area:head;display:flex;justify-content:space-between;align-items:flex-end;gap:32px;padding-top:20px}
+  .s7 .head .left{display:flex;flex-direction:column;gap:12px}
+  .s7 .road{grid-area:road;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+  .s7 .item{display:grid;grid-template-columns:64px 1fr auto;gap:18px;padding:24px 2px;border-bottom:1px solid var(--line);align-items:start}
+  .s7 .item .idx{font-family:var(--mono);font-size:12px;letter-spacing:0.22em;color:var(--text)}
+  .s7 .item .t{font-family:var(--sans);font-size:20px;font-weight:500;color:var(--text);margin-bottom:6px}
+  .s7 .item .d{font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--muted);max-width:46ch}
+  .s7 .item .h{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+  .s7 .qa{grid-area:qa;border:1px solid var(--line);padding:48px 36px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
+  .s7 .qa .top{display:flex;flex-direction:column;gap:18px}
+  .s7 .qa h1{font-family:var(--sans);font-weight:600;font-size:140px;letter-spacing:-0.02em;line-height:0.95;color:var(--text)}
+  .s7 .qa .sub{font-family:var(--sans);font-size:18px;color:var(--muted);max-width:38ch;line-height:1.5}
+  .s7 .qa .bottom{display:flex;flex-direction:column;gap:18px;border-top:1px solid var(--line);padding-top:24px}
+  .s7 .qa .bottom .l{font-family:var(--mono);font-size:11px;letter-spacing:0.22em;color:var(--dim)}
+  .s7 .qa .bottom .v{font-family:var(--mono);font-size:14px;letter-spacing:0.12em;color:var(--text)}
+
+  /* ===== Notes overlay ===== */
+  .notes{
+    position:fixed;left:0;right:0;bottom:0;
+    background:rgba(8,8,8,0.97);border-top:1px solid var(--line-strong);
+    padding:24px 64px 28px;max-height:42vh;overflow:auto;
+    transform:translateY(100%);transition:transform 220ms ease;
+    z-index:100;color:var(--text);
+  }
+  .notes.open{transform:translateY(0)}
+  .notes h3{font-family:var(--mono);font-size:11px;letter-spacing:0.24em;color:var(--dim);margin-bottom:12px;text-transform:uppercase}
+  .notes p{font-family:var(--sans);font-size:17px;line-height:1.6;color:var(--text);max-width:100ch}
+  .notes .hint{position:absolute;right:24px;top:18px;font-family:var(--mono);font-size:11px;letter-spacing:0.2em;color:var(--dim)}
+
+  .help{position:fixed;left:24px;bottom:18px;font-family:var(--mono);font-size:11px;letter-spacing:0.18em;color:var(--dim);z-index:60;opacity:0;transition:opacity 220ms ease;pointer-events:none;background:rgba(8,8,8,0.7);padding:6px 12px;border:1px solid var(--line)}
+  .help kbd{border:1px solid var(--line);padding:2px 6px;color:var(--text);margin:0 2px}
+  body.ui-on .help{opacity:1;pointer-events:auto}
+
+  /* Fullscreen toggle button */
+  .fsbtn{
+    position:fixed;right:24px;top:18px;z-index:60;
+    font-family:var(--mono);font-size:11px;letter-spacing:0.2em;color:var(--text);
+    background:rgba(8,8,8,0.7);border:1px solid var(--line-strong);
+    padding:8px 14px;cursor:pointer;text-transform:uppercase;
+    opacity:0;transition:opacity 220ms ease, background 160ms ease;pointer-events:none;
+  }
+  body.ui-on .fsbtn{opacity:1;pointer-events:auto}
+  .fsbtn:hover{background:var(--text);color:#111}
+  body.is-fs .fsbtn{display:none}
+  /* First-click hint overlay */
+  .fs-hint{
+    position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center;
+    pointer-events:none;
+  }
+  .fs-hint .pill{
+    margin-bottom:48px;background:rgba(8,8,8,0.85);border:1px solid var(--line-strong);
+    padding:14px 22px;font-family:var(--mono);font-size:12px;letter-spacing:0.22em;color:var(--text);
+    text-transform:uppercase;animation:hint-fade 4.6s ease forwards;
+  }
+  @keyframes hint-fade{
+    0%{opacity:0;transform:translateY(8px)}
+    10%,70%{opacity:1;transform:translateY(0)}
+    100%{opacity:0;transform:translateY(-4px)}
+  }
+  body.is-fs .fs-hint,body.hint-done .fs-hint{display:none}
+
+  /* Slide aside hidden by default */
+  aside.note-src{display:none}
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+
+  <!-- ================= SLIDE 1 ================= -->
+  <section class="slide s1" data-slide="1">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a class="active" href="#1">OVERVIEW</a>
+        <a href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">LAUNCH PLATFORM</a>
+    </header>
+
+    <div class="left">
+      <span class="chip dim">[ SYSTEM INITIALIZATION ]</span>
+      <h1 class="display h-lg">The 3D<br/>Cognition<br/>Engine.</h1>
+      <p class="body">Neuralis represents the next echelon in spatial computing architecture. A deterministic framework designed to synthesize complex topological data into actionable, high-fidelity cognitive models.</p>
+
+      <ol class="outline-list">
+        <li><span class="idx">01</span><span class="lbl">Business context &amp; problem</span><span class="dur">~1:05</span></li>
+        <li><span class="idx">02</span><span class="lbl">Solution overview</span><span class="dur">~1:05</span></li>
+        <li><span class="idx">03</span><span class="lbl">Architecture &amp; tech stack</span><span class="dur">~1:10</span></li>
+        <li><span class="idx">04</span><span class="lbl">Dataset &amp; methods</span><span class="dur">~1:15</span></li>
+        <li><span class="idx">05</span><span class="lbl">Results &amp; future work</span><span class="dur">~1:55</span></li>
+      </ol>
+    </div>
+
+    <div class="right">
+      <svg class="bg" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <pattern id="finegrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0 L0 0 L0 40" fill="none" stroke="rgba(229,226,225,0.045)" stroke-width="1"/>
+          </pattern>
+          <pattern id="windows" width="36" height="44" patternUnits="userSpaceOnUse">
+            <rect x="3" y="4" width="30" height="36" fill="none" stroke="rgba(229,226,225,0.18)" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect x="0" y="0" width="800" height="900" fill="url(#finegrid)"/>
+        <!-- distant building block -->
+        <rect x="40" y="180" width="170" height="620" fill="#1a1a1a" stroke="rgba(229,226,225,0.32)" stroke-width="1"/>
+        <rect x="40" y="180" width="170" height="620" fill="url(#windows)"/>
+        <!-- mid building block (foreground) -->
+        <rect x="240" y="80" width="320" height="780" fill="#222222" stroke="rgba(229,226,225,0.45)" stroke-width="1.2"/>
+        <rect x="240" y="80" width="320" height="780" fill="url(#windows)"/>
+        <!-- cantilever / slab -->
+        <rect x="240" y="430" width="520" height="14" fill="#2c2c2c" stroke="rgba(229,226,225,0.38)" stroke-width="1"/>
+        <!-- right tower -->
+        <rect x="590" y="140" width="180" height="720" fill="#1c1c1c" stroke="rgba(229,226,225,0.32)" stroke-width="1"/>
+        <rect x="590" y="140" width="180" height="720" fill="url(#windows)"/>
+        <!-- perspective baseline -->
+        <line x1="0" y1="860" x2="800" y2="860" stroke="rgba(229,226,225,0.22)" stroke-width="1"/>
+        <line x1="0" y1="870" x2="800" y2="870" stroke="rgba(229,226,225,0.08)" stroke-width="1"/>
+        <!-- corner crosshair -->
+        <g stroke="rgba(229,226,225,0.55)" stroke-width="1">
+          <line x1="20" y1="20" x2="48" y2="20"/><line x1="20" y1="20" x2="20" y2="48"/>
+          <line x1="780" y1="20" x2="752" y2="20"/><line x1="780" y1="20" x2="780" y2="48"/>
+          <line x1="20" y1="880" x2="48" y2="880"/><line x1="20" y1="880" x2="20" y2="852"/>
+          <line x1="780" y1="880" x2="752" y2="880"/><line x1="780" y1="880" x2="780" y2="852"/>
+        </g>
+      </svg>
+    </div>
+
+    <aside class="note-src">Good morning, everyone, and thank you for being here. My name is your speaker, and over the next seven minutes I will introduce you to Neuralis — the 3D Cognition Engine. Neuralis is an AI service that solves one of the slowest, most repetitive tasks in 3D production: retopology. Before we dive into the technical details, let me give you a quick map of what we will cover. First, the business context — the real problem that 3D studios face every day. After that, our solution, in plain language. Next, the system architecture, so you can see how the engine is built. Then, the dataset and the methods we use to drive it. And finally, our results — followed by a short look at what is coming next. The presentation is short and focused, so let's begin with the problem itself.</aside>
+  </section>
+
+  <!-- ================= SLIDE 2 ================= -->
+  <section class="slide s2" data-slide="2">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a class="active" href="#2">OVERVIEW</a>
+        <a href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">LAUNCH PLATFORM</a>
+    </header>
+
+    <div class="head">
+      <span class="chip dim">[ 01 · BUSINESS CONTEXT ]</span>
+      <h2 class="display h-md">The retopology bottleneck.</h2>
+      <p class="body">Every high-poly sculpt, photogrammetry scan and CAD asset must be hand-redrawn into clean, animation-ready geometry before it can ship. That manual step still costs studios days per asset — and burns out their most senior artists.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <span class="k">INPUT COMPLEXITY</span>
+        <span class="n">5M+</span>
+        <span class="d">Triangles per modern hero asset — well beyond what real-time engines can render.</span>
+      </div>
+      <div class="stat">
+        <span class="k">MANUAL EFFORT</span>
+        <span class="n">8 – 40h</span>
+        <span class="d">Of expert work to retopologise a single character or prop by hand.</span>
+      </div>
+      <div class="stat">
+        <span class="k">STUDIO COST</span>
+        <span class="n">$120/h</span>
+        <span class="d">Average senior-artist rate — multiplied across hundreds of assets per title.</span>
+      </div>
+      <div class="stat">
+        <span class="k">PIPELINE IMPACT</span>
+        <span class="n">100%</span>
+        <span class="d">Of game, film and XR pipelines hit this bottleneck on every single delivery.</span>
+      </div>
+    </div>
+
+    <div class="img">
+      <div class="ih">
+        <span class="k">FIG. 02.A · ARTIST HOURS PER ASSET</span>
+        <span class="u">HOURS</span>
+      </div>
+      <div class="bars">
+        <div class="bar lo">
+          <span class="lbl">Concept</span>
+          <div class="track"><div class="fill" style="width:18%"></div></div>
+          <span class="hrs">3 h</span>
+        </div>
+        <div class="bar lo">
+          <span class="lbl">Modeling</span>
+          <div class="track"><div class="fill" style="width:28%"></div></div>
+          <span class="hrs">6 h</span>
+        </div>
+        <div class="bar lo">
+          <span class="lbl">Sculpting</span>
+          <div class="track"><div class="fill" style="width:40%"></div></div>
+          <span class="hrs">10 h</span>
+        </div>
+        <div class="bar hi">
+          <span class="lbl">Retopology</span>
+          <div class="track"><div class="fill" style="width:92%"></div></div>
+          <span class="hrs">22 h</span>
+        </div>
+        <div class="bar lo">
+          <span class="lbl">UV / Bake</span>
+          <div class="track"><div class="fill" style="width:32%"></div></div>
+          <span class="hrs">7 h</span>
+        </div>
+        <div class="bar lo">
+          <span class="lbl">Rigging</span>
+          <div class="track"><div class="fill" style="width:36%"></div></div>
+          <span class="hrs">8 h</span>
+        </div>
+      </div>
+      <div class="quote">
+        <span class="marker">[ FIELD NOTE ]</span>
+        <p class="t">"Retopology is the unglamorous tax every 3D production pays — and the artists who do it well are the rarest hires on the team."</p>
+        <span class="a">— SENIOR TECH ARTIST · AAA STUDIO</span>
+      </div>
+    </div>
+
+    <aside class="note-src">Every 3D asset you see in a modern game, animated film or virtual production starts life as a high-poly sculpt — sometimes five, ten, even fifty million triangles. That data is beautiful, but it is unusable. You cannot rig it, you cannot animate it, and no real-time engine can render it. To bridge that gap, an artist must perform retopology by hand: redrawing the entire surface with a clean, low-polygon quad mesh. The numbers on screen are conservative — between eight and forty hours of expert work per asset, at studio rates of around one hundred and twenty dollars an hour. This bottleneck slows every production pipeline, drives up cost and burns out senior artists. So the question we kept asking ourselves was simple: can an AI agent take this job over, end to end, directly inside Blender?</aside>
+  </section>
+
+  <!-- ================= SLIDE 3 ================= -->
+  <section class="slide s3" data-slide="3">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a class="active" href="#3">OVERVIEW</a>
+        <a href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">LAUNCH PLATFORM</a>
+    </header>
+
+    <div class="head">
+      <div class="left">
+        <span class="chip dim">[ 02 · SOLUTION OVERVIEW ]</span>
+        <h2 class="display h-md">An agent that retopologises, end-to-end.</h2>
+        <p class="body">Neuralis is an autonomous agent that drives Blender directly. The artist describes intent in natural language; the agent reads the mesh, plans, acts and validates — until the topology is clean.</p>
+      </div>
+    </div>
+
+    <div class="hero">
+      <img src="assets/software_interface.png" alt="" />
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <span class="idx">01</span>
+        <div>
+          <div class="t">INPUT</div>
+          <p class="d">Any high-poly mesh — sculpt, scan or CAD — dropped straight into Blender. No pre-processing required.</p>
+        </div>
+      </div>
+      <div class="card">
+        <span class="idx">02</span>
+        <div>
+          <div class="t">AGENTIC LOOP</div>
+          <p class="d">An LLM agent reads the mesh, plans a strategy and calls Blender tools through the Model Context Protocol — observing and iterating in real time.</p>
+        </div>
+      </div>
+      <div class="card">
+        <span class="idx">03</span>
+        <div>
+          <div class="t">OUTPUT</div>
+          <p class="d">A quad-dominant, animation-ready low-poly mesh — silhouette preserved, ready for rigging, UV and rendering.</p>
+        </div>
+      </div>
+    </div>
+
+    <aside class="note-src">Our answer is Neuralis. In one sentence: Neuralis is an autonomous agent that retopologises 3D meshes inside Blender, driven by natural-language intent. The workflow has three steps. Step one — input: the artist loads any high-poly mesh, whether it is a sculpt, a photogrammetry scan or a CAD export. Step two — the agentic loop: a large language model reads the mesh, plans a strategy, calls Blender's tools through the Model Context Protocol, observes the result, validates it, and iterates until the topology is clean. Step three — output: a quad-dominant, animation-ready low-poly mesh, fully shaded and ready to ship. The crucial shift is this: the artist no longer drives the mouse — they describe what they want, and the agent operates Blender directly. A five-million-triangle sculpt becomes a five-thousand-quad mesh, fully automatic. Now let's look at how it is built.</aside>
+  </section>
+
+  <!-- ================= SLIDE 4 ================= -->
+  <section class="slide s4" data-slide="4">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a href="#1">OVERVIEW</a>
+        <a class="active" href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">DEPLOY SYSTEM</a>
+    </header>
+
+    <div class="head">
+      <div class="left">
+        <span class="chip dim">[ 03 · TECHNOLOGY OVERVIEW ]</span>
+        <h2 class="display h-md">Core architecture.</h2>
+      </div>
+      <span class="chip">[ 5-LAYER · 71 MCP TOOLS · GLM-4.7 ]</span>
+    </div>
+
+    <div class="stack">
+      <div class="layer">
+        <span class="lv">L0</span>
+        <div>
+          <div class="nm">Blender Bridge</div>
+          <div class="sm">MCP client · TCP / stdio / SSE transport.</div>
+        </div>
+        <span class="tag">TRANSPORT</span>
+      </div>
+      <div class="layer">
+        <span class="lv">L1</span>
+        <div>
+          <div class="nm">Mesh Operations</div>
+          <div class="sm">71 Blender tools · checkpoints · bmesh templates.</div>
+        </div>
+        <span class="tag">EXECUTOR</span>
+      </div>
+      <div class="layer">
+        <span class="lv">L2</span>
+        <div>
+          <div class="nm">Math Engine</div>
+          <div class="sm">9 tools · subprocess · NDJSON IPC.</div>
+        </div>
+        <span class="tag">SUBPROCESS</span>
+      </div>
+      <div class="layer">
+        <span class="lv">L3</span>
+        <div>
+          <div class="nm">Orchestration</div>
+          <div class="sm">OODA+ coordinator · ZoneWorker · Validator · Heugen · DAG.</div>
+        </div>
+        <span class="tag">AGENTIC</span>
+      </div>
+      <div class="layer">
+        <span class="lv">L4</span>
+        <div>
+          <div class="nm">UI / IPC</div>
+          <div class="sm">JSON-RPC 2.0 · auth · chat &amp; progress panels.</div>
+        </div>
+        <span class="tag">CLIENT</span>
+      </div>
+    </div>
+
+    <div class="tech">
+      <div class="tcard">
+        <span class="k">TEXT MODEL</span>
+        <span class="v">Z.ai GLM-4.7</span>
+        <span class="d">Drives the agentic loop — planning, tool selection, memory compression.</span>
+      </div>
+      <div class="tcard">
+        <span class="k">VISION MODEL</span>
+        <span class="v">Z.ai GLM-4.6v</span>
+        <span class="d">Visual validation gate (VL-3) — inspects rendered viewport for defects.</span>
+      </div>
+      <div class="tcard">
+        <span class="k">PROTOCOL</span>
+        <span class="v">MCP · 71 tools</span>
+        <span class="d">Model Context Protocol over TCP / stdio / SSE to the Blender addon.</span>
+      </div>
+      <div class="tcard">
+        <span class="k">STORAGE</span>
+        <span class="v">Postgres · Qdrant · Neo4j</span>
+        <span class="d">Event store, vector search for distilled rules, anti-pattern graph.</span>
+      </div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><span class="k">LAYERS</span><span class="v">5</span></div>
+      <div class="metric"><span class="k">MATH TOOLS</span><span class="v">9</span></div>
+      <div class="metric"><span class="k">VALIDATION GATES</span><span class="v">5</span></div>
+      <div class="metric"><span class="k">TESTS GREEN</span><span class="v">1,951</span></div>
+    </div>
+
+    <aside class="note-src">The engine is structured in five layers, from the metal up. Layer zero is the Blender Bridge — an MCP client that connects to Blender over TCP socket, stdio or Server-Sent Events. Layer one — Mesh Operations — wraps the seventy-one Blender tools we expose, plus checkpointing and bmesh templates. Layer two is the Math Engine, a separate Python subprocess that runs nine algorithms — Bayesian inference, Ransac, curvature analysis, feature-line detection, persistent homology, spatial queries and Thompson sampling — and talks back through an NDJSON pipe. Layer three is the orchestration brain. It runs an OODA-plus cycle — Observe, Orient, Decide, Act, Learn — coordinated by a blackboard, a directed acyclic graph of zones and a five-stage validator. The text model is Z.ai's GLM-4.7; the visual validator is GLM-4.6v. Layer four is the user-interface IPC layer. Every action is recorded in a PostgreSQL event store, learned rules go to Qdrant, and anti-patterns are kept in Neo4j. Every move the agent makes is logged — which brings us to our methods.</aside>
+  </section>
+
+  <!-- ================= SLIDE 5 ================= -->
+  <section class="slide s5" data-slide="5">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a href="#1">OVERVIEW</a>
+        <a class="active" href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">DEPLOY SYSTEM</a>
+    </header>
+
+    <div class="head">
+      <div class="left">
+        <span class="chip dim">[ 04 · DATASET &amp; METHODS ]</span>
+        <h2 class="display h-md">Continuous learning loop.</h2>
+        <p class="body">Neuralis is not a fine-tuned model. Every session is a new data point: raw traces are distilled by an LLM into reusable rules and stored in Qdrant — the system gets measurably better with every job it completes.</p>
+      </div>
+      <span class="chip">[ 9 MATH · 7 TOOL CATS · 1,951 TESTS GREEN ]</span>
+    </div>
+
+    <div class="col a">
+      <span class="col-h">A · INPUTS</span>
+      <div class="col-t">Real production data.</div>
+      <p>Artist sculpts from ZBrush · Blender. Photogrammetry scans. CAD-derived primitives. Range: 10K to 50M triangles per mesh.</p>
+      <div class="steps">
+        <div class="step"><span class="i">A1</span><span class="l">Sculpts<small>ZBrush · Blender · Mudbox exports.</small></span></div>
+        <div class="step"><span class="i">A2</span><span class="l">Scans<small>Photogrammetry &amp; LiDAR point clouds.</small></span></div>
+        <div class="step"><span class="i">A3</span><span class="l">CAD<small>Solid bodies tessellated to dense triangles.</small></span></div>
+      </div>
+    </div>
+
+    <div class="col b">
+      <span class="col-h">B · AGENT LOOP</span>
+      <div class="col-t">OODA+ over zones.</div>
+      <p>An outer Observe-Orient-Decide-Act-Learn cycle wraps an inner ZoneWorker loop that plans, executes, compresses memory, anti-loops and emits a done-candidate.</p>
+      <div class="steps">
+        <div class="step"><span class="i">B1</span><span class="l">Observe<small>Read mesh state &amp; past traces.</small></span></div>
+        <div class="step"><span class="i">B2</span><span class="l">Plan<small>LLM produces a batch of edits.</small></span></div>
+        <div class="step"><span class="i">B3</span><span class="l">Execute<small>Tool calls through MCP.</small></span></div>
+        <div class="step"><span class="i">B4</span><span class="l">Compress<small>LLM summarises working memory.</small></span></div>
+        <div class="step"><span class="i">B5</span><span class="l">Learn<small>Distill rules back to Qdrant.</small></span></div>
+      </div>
+    </div>
+
+    <div class="col c">
+      <span class="col-h">C · VALIDATION</span>
+      <div class="col-t">Five-stage cascade.</div>
+      <p>No output reaches the artist until it passes every gate — from hard topological constraints to a final regret check against alternative plans.</p>
+      <div class="steps">
+        <div class="step"><span class="i">VL-1</span><span class="l">Hard constraints<small>Manifold, no n-gons, valence bounds.</small></span></div>
+        <div class="step"><span class="i">VL-2</span><span class="l">Soft metrics<small>Edge flow, density, silhouette delta.</small></span></div>
+        <div class="step"><span class="i">VL-3</span><span class="l">Visual (VLM)<small>GLM-4.6v inspects rendered views.</small></span></div>
+        <div class="step"><span class="i">VL-4</span><span class="l">Boundary<small>Cross-zone stitching audit.</small></span></div>
+        <div class="step"><span class="i">VL-5</span><span class="l">Regret gate<small>Compare against alternative plans.</small></span></div>
+      </div>
+    </div>
+
+    <aside class="note-src">Let's talk about data and method. Neuralis is not a fine-tuned model — there is no static training set. Instead, we treat every retopology session as a data point. The inputs are real production meshes: artist sculpts, photogrammetry scans and CAD-derived primitives, ranging from a few thousand to several million triangles. The agent loop has two nested cycles. The outer cycle is OODA-plus: observe the mesh, orient against past experience, decide on a plan, act on Blender and learn from the outcome. The inner cycle is the ZoneWorker V2 loop: plan a small batch of edits, execute, compress the working memory using the language model itself, run anti-loop checks, validate, and submit a done-candidate to the coordinator. Quality is enforced by a five-stage validation cascade: hard topological constraints, soft quality metrics, visual checking by the vision model, cross-zone boundary checks, and a final regret gate. Every session is distilled into reusable rules and stored in Qdrant, so the system gets demonstrably better with every job it completes. Now — the numbers.</aside>
+  </section>
+
+  <!-- ================= SLIDE 6 ================= -->
+  <section class="slide s6" data-slide="6">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a href="#1">OVERVIEW</a>
+        <a href="#4">ARCHITECTURE</a>
+        <a class="active" href="#6">PERFORMANCE</a>
+        <a href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#7">PRESENT</a>
+    </header>
+
+    <div class="head">
+      <span class="chip dim">[ 05 · RESULTS &amp; EVALUATION ]</span>
+      <h2 class="display h-md">Precision optimisation.</h2>
+      <p class="lead">High-fidelity retopology pipelines transform dense input meshes into clean quad-based output — preserving silhouette, hitting real-time budgets and clearing every validation gate.</p>
+    </div>
+
+    <div class="metrics">
+      <div class="m"><span class="k">INPUT FACES</span><span class="v">2,048</span><span class="d">High-poly reference asset.</span></div>
+      <div class="m"><span class="k">OUTPUT FACES</span><span class="v">325</span><span class="d">Quad-dominant final mesh.</span></div>
+      <div class="m"><span class="k">QUADS</span><span class="v">100%</span><span class="d">Zero triangles in delivery.</span></div>
+      <div class="m"><span class="k">TESTS GREEN</span><span class="v">1,951</span><span class="d">Across 12 development phases.</span></div>
+    </div>
+
+    <div class="hero">
+      <img src="assets/comparison_before_after.png" alt="" />
+      <div class="caption"><span>FIG. 6.B // TOPOLOGY OPTIMIZATION ANALYSIS</span><span>BEFORE · AFTER</span></div>
+    </div>
+
+    <aside class="note-src">This is what success looks like. On the left of the comparison, the high-poly input: an asset with thousands of triangles and no usable topology. On the right, the Neuralis output: a clean, quad-dominant mesh. In our reference end-to-end test, an input of two thousand and forty-eight high-poly faces converges to three hundred and twenty-five quad-dominant faces — that is a hundred percent quads, with full silhouette preservation, in under five hundred milliseconds of compute per zone. Behind these results we have one thousand nine hundred and fifty-one automated tests, all green, across twelve development phases. Every output passes the five validation stages I described before it is delivered. And because every event is logged, every result is reproducible — we can replay any session, decision by decision, and audit exactly how the agent reached the final mesh. Let's look at what comes next.</aside>
+  </section>
+
+  <!-- ================= SLIDE 7 ================= -->
+  <section class="slide s7" data-slide="7">
+    <header class="navbar">
+      <div class="brand">NEURALIS</div>
+      <nav class="navlinks">
+        <a href="#1">OVERVIEW</a>
+        <a href="#4">ARCHITECTURE</a>
+        <a href="#6">PERFORMANCE</a>
+        <a class="active" href="#7">FUTURE</a>
+      </nav>
+      <a class="nav-cta" href="#1">RESTART DECK</a>
+    </header>
+
+    <div class="head">
+      <div class="left">
+        <span class="chip dim">[ 06 · FUTURE WORK ]</span>
+        <h2 class="display h-md">What comes next.</h2>
+        <p class="body">Four headline items on the roadmap — each one extending the same agentic core. Every milestone keeps the same five-stage validation guarantee.</p>
+      </div>
+      <span class="chip">[ ROADMAP · Q3 → Q1 ]</span>
+    </div>
+
+    <div class="road">
+      <div class="item">
+        <span class="idx">01</span>
+        <div>
+          <div class="t">Multi-asset batch processing</div>
+          <p class="d">Run Neuralis across an entire asset directory overnight — full studio-pipeline throughput.</p>
+        </div>
+        <span class="h">Q3</span>
+      </div>
+      <div class="item">
+        <span class="idx">02</span>
+        <div>
+          <div class="t">Real-time topology preview</div>
+          <p class="d">Streamed in-viewport candidate previews so the artist can steer the agent live.</p>
+        </div>
+        <span class="h">Q4</span>
+      </div>
+      <div class="item">
+        <span class="idx">03</span>
+        <div>
+          <div class="t">Material-aware retopology</div>
+          <p class="d">Respect UV seams, texture density and material islands when planning topology.</p>
+        </div>
+        <span class="h">Q4</span>
+      </div>
+      <div class="item">
+        <span class="idx">04</span>
+        <div>
+          <div class="t">Plugin marketplace via MCP</div>
+          <p class="d">Open the 71-tool surface for third-party studio tools to plug into the same agentic loop.</p>
+        </div>
+        <span class="h">Q1</span>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="top">
+        <span class="chip dim">[ THANK YOU ]</span>
+        <h1>Q &amp; A.</h1>
+        <p class="sub">Happy to take questions — on the business case, the architecture, the methods, or the roadmap.</p>
+      </div>
+      <div class="bottom">
+        <span class="l">CONTACT</span>
+        <span class="v">neuralis · product team</span>
+        <span class="l">REPO</span>
+        <span class="v">RetopoFlow · QuadForge · BlenderMCP</span>
+      </div>
+    </div>
+
+    <aside class="note-src">To summarise: we have shown the business problem — manual retopology that costs studios days per asset; our solution — an agentic AI that drives Blender directly; the architecture — a five-layer engine with seventy-one tools and a five-stage validator; the methods — an OODA-plus loop with continuous distillation into a living knowledge base; and the results — a fully working end-to-end pipeline with reproducible quality. Looking ahead, our roadmap has four headline items. First, multi-asset batch processing for full studio pipelines. Second, real-time topology preview inside the viewport. Third, material-aware retopology that respects UV seams and texture density. And fourth, an open plugin marketplace using the Model Context Protocol. Thank you for your attention — I am now very happy to take any questions you may have.</aside>
+  </section>
+
+</div>
+
+<div class="counter" id="counter">01 / 07</div>
+<button class="fsbtn" id="fsbtn" title="Toggle fullscreen (Enter)">⛶ FULLSCREEN</button>
+<div class="help">← / →&nbsp; navigate &nbsp;·&nbsp; <kbd>Enter</kbd> fullscreen &nbsp;·&nbsp; <kbd>S</kbd> notes &nbsp;·&nbsp; <kbd>F</kbd> first &nbsp;·&nbsp; <kbd>Esc</kbd> close</div>
+<div class="fs-hint" id="fsHint"><div class="pill">Click anywhere or press <span style="border:1px solid #fff;padding:1px 6px;margin:0 4px">ENTER</span> for fullscreen</div></div>
+
+<div class="notes" id="notes">
+  <span class="hint">PRESS S TO CLOSE</span>
+  <h3 id="notesTitle">Speaker notes · 01</h3>
+  <p id="notesBody"></p>
+</div>
+
+<script>
+(function(){
+  var slides = document.querySelectorAll('.slide');
+  var total = slides.length;
+  var current = 1;
+  var stage = document.getElementById('stage');
+  var counter = document.getElementById('counter');
+  var notes = document.getElementById('notes');
+  var notesTitle = document.getElementById('notesTitle');
+  var notesBody = document.getElementById('notesBody');
+
+  function pad(n){ return n < 10 ? '0'+n : ''+n; }
+
+  function show(n){
+    if(n<1) n=1; if(n>total) n=total;
+    current = n;
+    slides.forEach(function(s){ s.classList.remove('is-active'); });
+    var el = document.querySelector('.slide[data-slide="'+n+'"]');
+    if(el) el.classList.add('is-active');
+    counter.textContent = pad(n)+' / '+pad(total);
+    var note = el ? el.querySelector('aside.note-src') : null;
+    notesTitle.textContent = 'Speaker notes · '+pad(n);
+    notesBody.textContent = note ? note.textContent : '';
+    if(history.replaceState){ history.replaceState(null,'','#'+n); }
+  }
+
+  function fit(){
+    var sx = window.innerWidth / 1920;
+    var sy = window.innerHeight / 1080;
+    var s = Math.min(sx, sy);
+    stage.style.transform = 'scale('+s+')';
+  }
+
+  window.addEventListener('resize', fit);
+
+  document.addEventListener('keydown', function(e){
+    pingUI();
+    if(e.key==='ArrowRight' || e.key===' ' || e.key==='PageDown'){ show(current+1); e.preventDefault(); }
+    else if(e.key==='ArrowLeft' || e.key==='PageUp'){ show(current-1); e.preventDefault(); }
+    else if(e.key==='Home'){ show(1); }
+    else if(e.key==='End'){ show(total); }
+    else if(e.key==='f' || e.key==='F'){ show(1); }
+    else if(e.key==='Enter'){ toggleFullscreen(); dismissHint(); e.preventDefault(); }
+    else if(e.key==='s' || e.key==='S'){ notes.classList.toggle('open'); }
+    else if(e.key==='Escape'){ notes.classList.remove('open'); }
+    else if(/^[1-7]$/.test(e.key)){ show(parseInt(e.key,10)); }
+  });
+
+  // ===== Fullscreen API =====
+  var fsbtn = document.getElementById('fsbtn');
+  var fsHint = document.getElementById('fsHint');
+  function isFs(){
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+  }
+  function enterFs(){
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if(req) req.call(el).catch(function(){});
+  }
+  function exitFs(){
+    var ex = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if(ex) ex.call(document).catch(function(){});
+  }
+  function toggleFullscreen(){ isFs() ? exitFs() : enterFs(); }
+  function syncFsClass(){ document.body.classList.toggle('is-fs', isFs()); fit(); }
+  document.addEventListener('fullscreenchange', syncFsClass);
+  document.addEventListener('webkitfullscreenchange', syncFsClass);
+  if(fsbtn) fsbtn.addEventListener('click', function(e){ e.stopPropagation(); toggleFullscreen(); dismissHint(); });
+
+  // First-click auto-enter: respect that browsers require user gesture
+  var firstClickDone = false;
+  function dismissHint(){
+    document.body.classList.add('hint-done');
+    if(fsHint && fsHint.parentNode){ fsHint.parentNode.removeChild(fsHint); }
+  }
+  document.addEventListener('click', function(e){
+    if(!firstClickDone){
+      firstClickDone = true;
+      if(!isFs()) enterFs();
+      dismissHint();
+    }
+  });
+  // Auto-dismiss hint after 5s
+  setTimeout(dismissHint, 5200);
+
+  // Auto-hide UI bars (counter, help) after 2.2s of no input
+  var idleTimer;
+  function pingUI(){
+    document.body.classList.add('ui-on');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){ document.body.classList.remove('ui-on'); }, 2200);
+  }
+  document.addEventListener('mousemove', pingUI, {passive:true});
+  document.addEventListener('click', pingUI, {passive:true});
+  document.addEventListener('touchstart', pingUI, {passive:true});
+
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      var n = parseInt(a.getAttribute('href').slice(1),10);
+      if(!isNaN(n)){ e.preventDefault(); show(n); }
+    });
+  });
+
+  // Initial slide from hash
+  var initial = parseInt((location.hash||'#1').slice(1),10);
+  if(isNaN(initial)) initial = 1;
+
+  // Wait for fonts to settle before painting (for headless screenshot fidelity)
+  function go(){ fit(); show(initial); }
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(go).catch(go);
+  } else {
+    go();
+  }
+})();
+</script>
+
+</body>
+</html>
